@@ -459,7 +459,7 @@ def cmd_lock(archive_path):
             'is_dir': bool(block.file_flags & FILE_FLAG_DIR),
         })
 
-    arc_bytes = build_archive_bytes(entries)
+    arc_bytes = build_archive_bytes(entries, locked=True)
     _write_archive(archive_path, arc_bytes)
     print(f"Archive locked: {archive_path}")
     return 0

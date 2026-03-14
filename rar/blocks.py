@@ -7,10 +7,11 @@ from .headers import (
     build_dir_header,
     build_end_header,
     ARC_FLAG_SOLID,
+    ARC_FLAG_LOCKED,
 )
 
 
-def build_archive_bytes(entries, solid=False):
+def build_archive_bytes(entries, solid=False, locked=False):
     """
     Build a complete RAR 5.0 archive as bytes.
 
@@ -31,6 +32,8 @@ def build_archive_bytes(entries, solid=False):
     bytes
     """
     arc_flags = ARC_FLAG_SOLID if solid else 0
+    if locked:
+        arc_flags |= ARC_FLAG_LOCKED
     parts = [RAR5_SIGNATURE, build_main_header(arc_flags)]
 
     for entry in entries:

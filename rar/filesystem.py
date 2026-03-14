@@ -136,8 +136,15 @@ def write_extracted_file(dest_dir, archive_name, data, mtime=None,
 
 def write_extracted_dir(dest_dir, archive_name, mtime=None):
     """Create a directory entry during extraction."""
-    safe_name = archive_name.lstrip('/').replace('..', '_')
+    # Strip leading slashes; real protection is the realpath check below.
+    safe_name = archive_name.lstrip('/')
     out_path  = os.path.normpath(os.path.join(dest_dir, safe_name))
+
+    # Ensure the resolved path stays inside dest_dir
+    dest_real = os.path.realpath(dest_dir)
+    out_real  = os.path.realpath(os.path.join(dest_dir, safe_name))
+    if not out_real.startswith(dest_real + os.sep) and out_real != dest_real:
+        raise ValueError(f"Path traversal detected: {archive_name!r}")
     os.makedirs(out_path, exist_ok=True)
     if mtime is not None:
         try:

@@ -51,12 +51,14 @@ RAR supports six compression levels, selected with the `-m<n>` switch when using
 
 ## Compression information field (RAR 5.0 binary)
 
-The compression info is stored as a `vint` in the file header:
+The compression info is stored as a `vint` in the file header.
+All bit positions below use **0-based** (LSB = bit 0) indexing:
 
 ```
 Bits  0-5   (0x003F): Algorithm version. 0 = RAR 5.0+, 1 = RAR 7.0+
 Bit   6     (0x0040): Solid flag – continue dictionary from previous file
-Bits  7-9   (0x0380): Compression method (0-5, matching -m level)  [technote: "bits 8-10", 1-indexed]
+Bits  7-9   (0x0380): Compression method (0-5, matching -m level)
+              (the technote describes these as "bits 8-10" using 1-based indexing)
 Bits 10-14  (0x7C00): Minimum dictionary size (N → 128 KB × 2^N)
 ```
 
