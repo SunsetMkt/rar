@@ -15,10 +15,11 @@ from .blocks import (
 )
 from .utils import decode_vint
 
-UNRAR_BINARY = os.path.join(
+_DEFAULT_UNRAR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     'rarbinary', 'unrar',
 )
+UNRAR_BINARY = os.environ.get('UNRAR_BINARY', _DEFAULT_UNRAR)
 
 
 class Archive:
@@ -238,6 +239,10 @@ def _build_output_path(dest_path: str, name: str, include_paths: bool) -> str:
 def _extract_with_unrar(archive_path: str, dest_path: str,
                         include_paths: bool = True):
     """Delegate extraction of compressed files to the unrar binary."""
+    # Resolve to absolute paths to prevent any relative-path traversal surprises
+    archive_path = os.path.realpath(archive_path)
+    dest_path = os.path.realpath(dest_path)
+
     cmd_char = 'x' if include_paths else 'e'
     cmd = [UNRAR_BINARY, cmd_char, archive_path, dest_path + os.sep, '-y']
     result = subprocess.run(cmd, capture_output=True)
