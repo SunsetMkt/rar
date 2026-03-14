@@ -21,6 +21,21 @@ _DEFAULT_UNRAR = os.path.join(
 )
 UNRAR_BINARY = os.environ.get('UNRAR_BINARY', _DEFAULT_UNRAR)
 
+# Validate the unrar binary on module load so misconfiguration is caught early.
+def _validate_unrar_binary(path: str) -> str:
+    real = os.path.realpath(path)
+    if not os.path.isfile(real):
+        raise FileNotFoundError(f"unrar binary not found: {real}")
+    if not os.access(real, os.X_OK):
+        raise PermissionError(f"unrar binary is not executable: {real}")
+    return real
+
+try:
+    UNRAR_BINARY = _validate_unrar_binary(UNRAR_BINARY)
+except (FileNotFoundError, PermissionError):
+    # Allow import to succeed even if unrar is absent; extraction will fail gracefully.
+    UNRAR_BINARY = os.path.realpath(UNRAR_BINARY)
+
 
 class Archive:
     # ------------------------------------------------------------------
