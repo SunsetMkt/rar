@@ -258,6 +258,9 @@ def _extract_with_unrar(archive_path: str, dest_path: str,
     archive_path = os.path.realpath(archive_path)
     dest_path = os.path.realpath(dest_path)
 
+    if not os.path.isfile(archive_path):
+        raise FileNotFoundError(f"Archive not found: {archive_path}")
+
     cmd_char = 'x' if include_paths else 'e'
     cmd = [UNRAR_BINARY, cmd_char, archive_path, dest_path + os.sep, '-y']
     result = subprocess.run(cmd, capture_output=True)
