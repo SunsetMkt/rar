@@ -10,6 +10,15 @@ import (
 // RAR 5.0 signature
 var rar5Signature = []byte{0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00}
 
+// RAR 4.x (and earlier) signature prefix
+var rar4Signature = []byte{0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00}
+
+// Compression algorithm versions
+const (
+	compVer5 = 0 // RAR 5 algorithm
+	compVer7 = 1 // RAR 7 algorithm (not supported)
+)
+
 // Header types
 const (
 	headerTypeMain       = 1

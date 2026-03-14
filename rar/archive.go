@@ -80,11 +80,15 @@ func (rr *rarReader) readSignature() error {
 	if _, err := io.ReadFull(rr.f, sig); err != nil {
 		return fmt.Errorf("cannot read signature: %w", err)
 	}
-	if !bytes.Equal(sig, rar5Signature) {
-		return fmt.Errorf("not a RAR archive or unsupported format")
+	if bytes.Equal(sig, rar5Signature) {
+		rr.offset = 8
+		return nil
 	}
-	rr.offset = 8
-	return nil
+	// Check for RAR 4.x / earlier format (7-byte marker, last byte 0x00 not 0x01)
+	if bytes.Equal(sig[:7], rar4Signature) {
+		return fmt.Errorf("RAR 4.x format is not supported; please use a RAR 5 archive")
+	}
+	return fmt.Errorf("not a RAR archive or unsupported format")
 }
 
 // blockHeader represents a parsed RAR 5.0 block header (short block).
@@ -617,12 +621,22 @@ func (w *rarWriter) AddFile(arcName string, data []byte, mtime time.Time, attrs 
 		fileFlags |= fileFlagDirectory
 	}
 
-	// Compute CRC32 of the file data
+	// Compute CRC32 of the original (uncompressed) file data
 	dataCRC32 := computeCRC32(data)
 
-	// Compression info: version=0, not solid, method=0 (store), dict=0
-	// For now we always store regardless of compLevel (produces valid archives)
-	compInfo := uint64(0) // method 0 (store), version 0
+	// Try to compress if a compression level > 0 was requested
+	writeData := data
+	method := 0
+	if w.compLevel > 0 && !isDir && len(data) > 0 {
+		compressed := compress5(data, w.compLevel)
+		if compressed != nil {
+			writeData = compressed
+			method = w.compLevel
+		}
+	}
+
+	// Compression info: version=0 (RAR5), not solid, method, dictBits=0 (128KB)
+	compInfo := uint64(method) << compMethodShift
 
 	// Build extra area
 	var extra []byte
@@ -636,15 +650,15 @@ func (w *rarWriter) AddFile(arcName string, data []byte, mtime time.Time, attrs 
 	// Build type-specific data
 	var tsdata []byte
 	tsdata = append(tsdata, encodeVint(fileFlags)...)
-	tsdata = append(tsdata, encodeVint(uint64(len(data)))...) // unpacked size
-	tsdata = append(tsdata, encodeVint(uint64(attrs))...)     // attributes
+	tsdata = append(tsdata, encodeVint(uint64(len(data)))...)    // unpacked size
+	tsdata = append(tsdata, encodeVint(uint64(attrs))...)        // attributes
 	// mtime not in main header (flag 0x0002 not set)
-	tsdata = append(tsdata, uint32LEBytes(dataCRC32)...) // CRC32 (flag 0x0004 set)
-	tsdata = append(tsdata, encodeVintPadded(compInfo, 2)...) // compression info (2 bytes padded)
-	tsdata = append(tsdata, encodeVint(hostOSUnix)...)   // host OS (Unix)
+	tsdata = append(tsdata, uint32LEBytes(dataCRC32)...)         // CRC32 (flag 0x0004 set)
+	tsdata = append(tsdata, encodeVintPadded(compInfo, 2)...)    // compression info (2 bytes padded)
+	tsdata = append(tsdata, encodeVint(hostOSUnix)...)           // host OS (Unix)
 	nameBytes := []byte(arcName)
 	tsdata = append(tsdata, encodeVint(uint64(len(nameBytes)))...) // name length
-	tsdata = append(tsdata, nameBytes...)                           // name
+	tsdata = append(tsdata, nameBytes...)                          // name
 
 	// Build flags
 	commonFlags := uint64(hflData) // data area present
@@ -652,13 +666,13 @@ func (w *rarWriter) AddFile(arcName string, data []byte, mtime time.Time, attrs 
 		commonFlags |= hflExtra
 	}
 
-	hdr := buildHeader(headerTypeFile, commonFlags, tsdata, extra, uint64(len(data)))
+	hdr := buildHeader(headerTypeFile, commonFlags, tsdata, extra, uint64(len(writeData)))
 	if _, err := w.f.Write(hdr); err != nil {
 		return err
 	}
 
-	// Write data area
-	if _, err := w.f.Write(data); err != nil {
+	// Write data area (compressed or stored)
+	if _, err := w.f.Write(writeData); err != nil {
 		return err
 	}
 	return nil
@@ -739,13 +753,29 @@ func readFileData(rr *rarReader, fe *fileEntry) ([]byte, error) {
 	if _, err := rr.f.Seek(fe.DataOffset, io.SeekStart); err != nil {
 		return nil, err
 	}
-	method := compMethod(fe.CompInfo)
-	if method != 0 {
-		return nil, fmt.Errorf("compressed data (method %d) not supported for extraction", method)
-	}
-	data := make([]byte, fe.PackedSize)
-	if _, err := io.ReadFull(rr.f, data); err != nil {
+	packed := make([]byte, fe.PackedSize)
+	if _, err := io.ReadFull(rr.f, packed); err != nil {
 		return nil, err
+	}
+
+	method := compMethod(fe.CompInfo)
+	if method == 0 {
+		// Stored — data is already the raw content
+		return packed, nil
+	}
+
+	// Check algorithm version: only version 0 (RAR5) is supported
+	ver := compVersion(fe.CompInfo)
+	if ver != compVer5 {
+		return nil, fmt.Errorf("compression algorithm version %d is not supported (only RAR5 version 0)", ver)
+	}
+
+	// Decompress using the RAR5 LZ77+Huffman algorithm
+	dictBits := int((fe.CompInfo >> compDictShift) & 0xf)
+	winSize := 0x20000 << uint(dictBits) // 128KB * 2^dictBits
+	data, err := decompress5(packed, int(fe.UnpackedSize), winSize)
+	if err != nil {
+		return nil, fmt.Errorf("decompression failed: %w", err)
 	}
 	return data, nil
 }
