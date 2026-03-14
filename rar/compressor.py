@@ -412,7 +412,10 @@ def compress_block(data: bytes) -> bytes:
 
     # --- Meta-encode the 430 lengths --------------------------------------
     all_lengths_list = ld_lengths + dd_lengths + ldd_lengths + rd_lengths
-    assert len(all_lengths_list) == HUFF_TABLE_SIZEB
+    if len(all_lengths_list) != HUFF_TABLE_SIZEB:
+        raise ValueError(
+            f"Huffman table size mismatch: {len(all_lengths_list)} != {HUFF_TABLE_SIZEB}"
+        )
 
     meta_syms, meta_extras = encode_huffman_tables(all_lengths_list)
 
